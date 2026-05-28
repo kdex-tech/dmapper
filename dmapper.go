@@ -25,14 +25,14 @@ type MappingRule struct {
 	// sourceExpression is CEL program to compute a transformation of input into
 	// a new form.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=5
+	// +kubebuilder:validation:MinLength=2
 	// +kubebuilder:example:=`self.oidc.groups.filter(g, g.startsWith('app_')).join(',')`
 	SourceExpression string `json:"sourceExpression"`
 
 	// targetPropPath is a dot-separated property path for where the result
 	// should be attached in the output.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=5
+	// +kubebuilder:validation:MinLength=2
 	// +kubebuilder:example:=`auth.internal_groups`
 	TargetPropPath string `json:"targetPropPath"`
 }
