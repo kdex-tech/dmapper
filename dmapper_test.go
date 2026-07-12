@@ -174,3 +174,56 @@ func TestMapper_Execute(t *testing.T) {
 		})
 	}
 }
+
+// TestMapper_Execute_ChainsAdditiveRulesOnSameTarget pins that rules chain: a
+// later rule evaluates against earlier rules' outputs, so two additive rules on
+// the same target ACCUMULATE instead of clobbering (last-wins). See #1.
+func TestMapper_Execute_ChainsAdditiveRulesOnSameTarget(t *testing.T) {
+	m, err := dmapper.NewMapper([]dmapper.MappingRule{
+		{
+			SourceExpression: `(has(self.entitlements) ? self.entitlements : []) + (has(self.a) ? self.a : [])`,
+			TargetPropPath:   "entitlements",
+		},
+		{
+			SourceExpression: `(has(self.entitlements) ? self.entitlements : []) + (has(self.b) ? self.b : [])`,
+			TargetPropPath:   "entitlements",
+		},
+	})
+	assert.NoError(t, err)
+
+	input := map[string]any{
+		"entitlements": []string{"base"},
+		"a":            []string{"from-a"},
+		"b":            []string{"from-b"},
+	}
+	got, err := m.Execute(input)
+	assert.NoError(t, err)
+
+	// Rule 2 must see rule 1's output for self.entitlements, so the result is
+	// base + from-a + from-b, NOT base + from-b (which the pre-fix last-wins,
+	// original-self behavior produced).
+	assert.ElementsMatch(t, []string{"base", "from-a", "from-b"}, got["entitlements"])
+
+	// Execute must not mutate the caller's input while chaining.
+	assert.Equal(t, []string{"base"}, input["entitlements"], "input must not be mutated")
+}
+
+// TestMapper_Execute_ChainAcrossDifferentTargets pins that a rule can consume a
+// prior rule's output written to a DIFFERENT target.
+func TestMapper_Execute_ChainAcrossDifferentTargets(t *testing.T) {
+	m, err := dmapper.NewMapper([]dmapper.MappingRule{
+		{SourceExpression: `self.a + self.b`, TargetPropPath: "combined"},
+		{SourceExpression: `self.combined + self.c`, TargetPropPath: "final"},
+	})
+	assert.NoError(t, err)
+
+	got, err := m.Execute(map[string]any{
+		"a": []string{"a1"},
+		"b": []string{"b1"},
+		"c": []string{"c1"},
+	})
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, []string{"a1", "b1"}, got["combined"])
+	assert.ElementsMatch(t, []string{"a1", "b1", "c1"}, got["final"],
+		"the second rule must see the first rule's output at self.combined")
+}

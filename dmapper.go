@@ -46,8 +46,18 @@ type compiledMappingRule struct {
 func (m *Mapper) Execute(input map[string]any) (map[string]any, error) {
 	resultClaims := make(map[string]any)
 
+	// self is the working context each rule evaluates against. It starts as a
+	// map-deep copy of input (so the caller's input is never mutated) and
+	// accumulates each rule's output, so a later rule SEES earlier rules'
+	// contributions: additive rules on the same target accumulate instead of
+	// clobbering (last-wins), and a rule can consume a prior rule's output. Rules
+	// apply in order. See kdex-tech/dmapper#1.
+	self, ok := cloneMaps(input).(map[string]any)
+	if !ok || self == nil {
+		self = map[string]any{}
+	}
 	data := map[string]any{
-		"self": input,
+		"self": self,
 	}
 
 	for _, rule := range m.CompiledMappingRules {
@@ -89,9 +99,31 @@ func (m *Mapper) Execute(input map[string]any) (map[string]any, error) {
 
 			return nil, err
 		}
+		// Chain: reflect this rule's output into the working context so subsequent
+		// rules can see it. Best-effort — if the target path conflicts with the
+		// input's existing structure, the value still appears in the returned
+		// result; it just isn't visible to later rules' self.
+		_ = setNestedPath(self, rule.TargetPropPath, val)
 	}
 
 	return resultClaims, nil
+}
+
+// cloneMaps returns a copy of v with every nested map[string]any cloned, so the
+// working context can be mutated (via setNestedPath) without touching the
+// caller's input. Non-map values — including slices — are shared by reference;
+// setNestedPath only creates/descends maps and replaces leaf values, so it never
+// mutates a shared slice or scalar.
+func cloneMaps(v any) any {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return v
+	}
+	out := make(map[string]any, len(m))
+	for k, val := range m {
+		out[k] = cloneMaps(val)
+	}
+	return out
 }
 
 func NewMapper(rules []MappingRule) (*Mapper, error) {
