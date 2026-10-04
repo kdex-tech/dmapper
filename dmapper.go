@@ -13,9 +13,35 @@ type Mapper struct {
 	CompiledMappingRules []compiledMappingRule
 }
 
+// MergeStrategy controls how a rule's result combines with a value already
+// present at its targetPropPath.
+type MergeStrategy string
+
+const (
+	// MergeAccumulate (the default when empty): when both the existing value
+	// and the result are lists, the result is the existing list followed by
+	// the result's items not already present. Any other shape pair replaces.
+	MergeAccumulate MergeStrategy = "Accumulate"
+	// MergeReplace: the result always replaces the existing value. Use it for
+	// a rule that filters or narrows a list.
+	MergeReplace MergeStrategy = "Replace"
+)
+
 // MappingRule defines a transformation rule for mapping arbitrary data from an
 // input to an output.
 type MappingRule struct {
+	// merge controls how the rule's result combines with a value already at
+	// targetPropPath. Accumulate (the default when empty): when both the
+	// existing value and the result are lists, the result is the existing list
+	// followed by the result's items not already present (order-preserving
+	// set-union), so restating self.<target> is harmless and idempotent. Any
+	// other shape pair (scalar, map, list vs non-list) replaces. Replace: the
+	// result always replaces — use it for a rule that filters or narrows a
+	// list.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Enum=Accumulate;Replace
+	Merge MergeStrategy `json:"merge,omitempty"`
+
 	// required indicates that if the rule fails to produce a value the rule
 	// will be skipped. Otherwise the execution should fail.
 	// +kubebuilder:validation:Optional
@@ -140,6 +166,13 @@ func compileMappers(rules []MappingRule) ([]compiledMappingRule, error) {
 	env, _ := cel.NewEnv(cel.Variable("self", cel.MapType(cel.StringType, cel.AnyType)))
 
 	for _, rule := range rules {
+		switch rule.Merge {
+		case "", MergeAccumulate, MergeReplace:
+		default:
+			return nil, fmt.Errorf("rule targeting %q: unknown merge strategy %q (want %q or %q)",
+				rule.TargetPropPath, rule.Merge, MergeAccumulate, MergeReplace)
+		}
+
 		ast, issues := env.Compile(rule.SourceExpression)
 		if issues.Err() != nil {
 			return nil, issues.Err()
