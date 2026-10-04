@@ -23,7 +23,8 @@ const (
 	// the result's items not already present. Any other shape pair replaces.
 	MergeAccumulate MergeStrategy = "Accumulate"
 	// MergeReplace: the result always replaces the existing value. Use it for
-	// a rule that filters or narrows a list.
+	// a rule that filters, transforms, normalises or overrides a list already
+	// at its own target.
 	MergeReplace MergeStrategy = "Replace"
 )
 
@@ -34,10 +35,13 @@ type MappingRule struct {
 	// targetPropPath. Accumulate (the default when empty): when both the
 	// existing value and the result are lists, the result is the existing list
 	// followed by the result's items not already present (order-preserving
-	// set-union), so restating self.<target> is harmless and idempotent. Any
-	// other shape pair (scalar, map, list vs non-list) replaces. Replace: the
-	// result always replaces — use it for a rule that filters or narrows a
-	// list.
+	// set-union), so restating self.<target> is harmless and idempotent.
+	// Values already at that path in the input — including claims asserted by
+	// an identity provider — therefore stay in the output. Any other shape
+	// pair (scalar, map, list vs non-list) replaces. Replace: the result
+	// always replaces. Use it for any rule meant to filter, transform,
+	// normalise or override a list already at its own target (e.g. a rule
+	// that reads self.groups and writes groups).
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Enum=Accumulate;Replace
 	Merge MergeStrategy `json:"merge,omitempty"`

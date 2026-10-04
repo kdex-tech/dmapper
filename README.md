@@ -107,7 +107,8 @@ rule's result is then combined with whatever is already at its
   lists, the result is the existing list followed by the result's items that
   are not already present. Restating `self.<target>` is harmless. Any other
   shape pair replaces.
-- `Replace`: the result always replaces. Use it to filter or narrow a list.
+- `Replace`: the result always replaces. Use it for any rule meant to filter,
+  transform, normalise or override a list already at its own target.
 
 With `entitlements: [static:a]` and `extra_grants: [extra:b]`:
 
@@ -117,8 +118,18 @@ With `entitlements: [static:a]` and `extra_grants: [extra:b]`:
 | `self.entitlements + self.extra_grants` | `[static:a extra:b]` |
 | `self.entitlements`, then `self.extra_grants` | `[static:a extra:b]` |
 
-A filter must opt out, or it cannot remove anything. (`self` is typed
-`map(string, any)`, so a top-level value needs `dyn()` before a comprehension.)
+Under the default, values already at the target in the input stay in the
+output, including claims asserted by an identity provider. So a rule that
+reads `self.<target>` and writes `<target>` back changed must opt out:
+
+- a filter (`groups` → only `app_*` groups) would remove nothing;
+- a transform (`roles.map(r, r.lowerAscii())`, prefixing) would keep the
+  originals beside the transformed values, and grows on every re-run;
+- an override (`self.mapped_roles` → `roles`) would keep the roles it meant to
+  replace.
+
+(`self` is typed `map(string, any)`, so a top-level value needs `dyn()` before
+a comprehension.)
 
 ```yaml
 - sourceExpression: dyn(self.roles).filter(r, r != 'guest')
