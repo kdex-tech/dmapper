@@ -72,6 +72,10 @@ The `MappingRule` struct defines a single mapping rule:
 
 ```go
 type MappingRule struct {
+	// Merge controls how the result combines with a value already at
+	// TargetPropPath: Accumulate (default) or Replace.
+	Merge MergeStrategy `json:"merge,omitempty"`
+
 	// Required indicates that if the rule fails to produce a value the rule
 	// will be skipped. Otherwise the execution should fail.
 	Required bool `json:"required"`
@@ -88,9 +92,41 @@ type MappingRule struct {
 
 ### Fields
 
+- **Merge**: `Accumulate` (the default) or `Replace`. See [Merge semantics](#merge-semantics).
 - **Required**: If `true`, the mapper will return an error if this rule fails. If `false`, the rule will be skipped and execution will continue.
 - **SourceExpression**: A CEL expression that operates on the input data. The input is available as the `self` variable.
 - **TargetPropPath**: A dot-separated path indicating where the result should be placed in the output map.
+
+## Merge semantics
+
+Rules apply in order, and each rule sees earlier rules' output in `self`. A
+rule's result is then combined with whatever is already at its
+`targetPropPath`, according to `merge`:
+
+- `Accumulate` (default): when both the existing value and the result are
+  lists, the result is the existing list followed by the result's items that
+  are not already present. Restating `self.<target>` is harmless. Any other
+  shape pair replaces.
+- `Replace`: the result always replaces. Use it to filter or narrow a list.
+
+With `entitlements: [static:a]` and `extra_grants: [extra:b]`:
+
+| Rules (all target `entitlements`) | Result |
+|---|---|
+| `self.extra_grants` | `[static:a extra:b]` |
+| `self.entitlements + self.extra_grants` | `[static:a extra:b]` |
+| `self.entitlements`, then `self.extra_grants` | `[static:a extra:b]` |
+
+A filter must opt out, or it cannot remove anything. (`self` is typed
+`map(string, any)`, so a top-level value needs `dyn()` before a comprehension.)
+
+```yaml
+- sourceExpression: dyn(self.roles).filter(r, r != 'guest')
+  targetPropPath: roles
+  merge: Replace
+```
+
+Before v0.2.0 every rule replaced its target.
 
 ## CEL Support
 

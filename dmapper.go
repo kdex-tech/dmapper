@@ -77,7 +77,8 @@ func (m *Mapper) Execute(input map[string]any) (map[string]any, error) {
 	// accumulates each rule's output, so a later rule SEES earlier rules'
 	// contributions: additive rules on the same target accumulate instead of
 	// clobbering (last-wins), and a rule can consume a prior rule's output. Rules
-	// apply in order. See kdex-tech/dmapper#1.
+	// apply in order. See kdex-tech/dmapper#1. List targets accumulate by
+	// default (see MergeStrategy).
 	self, ok := cloneMaps(input).(map[string]any)
 	if !ok || self == nil {
 		self = map[string]any{}
@@ -116,6 +117,16 @@ func (m *Mapper) Execute(input map[string]any) (map[string]any, error) {
 
 		if val == nil {
 			val = out.Value()
+		}
+
+		// Accumulate (the default): a list result is unioned onto a list
+		// already at the target in the chained self, so a rule that forgets to
+		// restate self.<target> cannot silently drop what is there. Replace
+		// opts out. See kdex-tech/host-manager#229.
+		if rule.Merge != MergeReplace {
+			if existing, ok := getNestedPath(self, rule.TargetPropPath); ok {
+				val = accumulate(existing, val)
+			}
 		}
 
 		if err := setNestedPath(resultClaims, rule.TargetPropPath, val); err != nil {
